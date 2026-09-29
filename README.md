@@ -1,57 +1,145 @@
-# Spatiotemporal dynamics of active root zone storage revealed from hybrid machine learning 
+# Spatiotemporal Dynamics of Active Root Zone Storage Revealed from Hybrid Machine Learning
 
-## Overview
-The code demonstrates a straightforward, torch implementation of the model proposed in the preprint **Spatiotemporal dynamics of active root zone storage revealed from hybrid machine learning**.
+This repository provides a straightforward PyTorch implementation of the model proposed in the manuscript [Spatiotemporal dynamics of active root zone storage revealed from hybrid machine learning](https://doi.org/10.1029/2025WR042803).
 
-***!!!** The **libs** modules will be publicly available upon acceptance of the manuscript. **!!!***
+The globally operationalized version of the model can be found in our [MOREDO repository](https://github.com/hydroshub/moredo).
 
-If you have any questions or suggestions with the code or find a bug, please let us know. You are welcome to raise an issue or contact us at gblougouras(at)bgc-jena.mpg.de.
+The model is a differentiable, process-based hybrid model that simulates water balance at basin scales. It jointly predicts streamflow (Q), evapotranspiration (ET), snow water equivalent (SWE), and terrestrial water storage anomaly (TWSA). The model focuses on diagnosing the active root zone water storage dynamics.
 
-## Repository structure
-```text
-├── libs/        # Directory containing modules to be called in the main training script
-│   ├── model.py # Contains all necessary classes and functions to build the model used in the manuscript
-│   ├── utils.py # Functions to guide the training process
-├── train.py     # Executable code to train the model (more information on the below sections)
-├── README.md    # This file
-└── LICENSE      # Project license 
+If you have any questions or suggestions for the code, or find you a bug, please let us know. You are welcome to raise an issue or contact us at gblougouras(at)bgc-jena.mpg.de.
+
+---
+
+## File Overview
+
+| File | Description |
+|------|-------------|
+| `config.py` | **Configuration file.** Sets data paths, input/output variable names, time range, model hyperparameter bounds, and training settings. |
+| `data.py` | **Data module.** Handles CSV loading, attribute preprocessing (standardization, land cover aggregation), dataset caching, time-block cross-validation (`TimeBlockCV`), and PyTorch dataset wrapping (`UnifiedDataset`). |
+| `main.py` | **Entry point.** Parses command-line arguments, loads data, sets up cross-validation splits, builds the model, and starts training. |
+| `model.py` | **Model module.** Implements the hybrid hydrological model `HybridModel`, including a neural-network parameter generator (`StaticParamGenerator`) and process simulation modules (`HydroProcess`: snow, soil moisture, fast/slow flow, river routing). |
+| `utils.py` | **Utilities.** Contains random seed setup, loss functions (masked R², NSE, Pearson/Spearman correlation), and the full training loop (`train_model`) with early stopping and learning rate scheduling. |
+| `basin_list_us_camels.txt` | **Basin list.** CAMELS-US basin IDs, one per line. Passed as the `--basin_list` argument. |
+
+---
+
+## Data Requirements
+
+Data is sourced from the [Caravan](https://github.com/kratzert/Caravan) dataset. For more information about alternative data employed, gap-filling LAI, catchment filtering and other methodological steps, please refer to the manuscript. The expected directory structure is:
+
 ```
+/path/to/Caravan/
+├── forcing_and_target_csvs/
+│   ├── camels_01013500_merged.csv   # one CSV per basin
+│   └── ...
+└── attributes/
+    └── camels/
+        ├── attributes_hydroatlas_camels.csv
+        └── attributes_other_camels.csv
+```
+
+Each basin CSV must contain the following columns:
+
+- **Forcings (inputs):** `total_precipitation_sum`, `temperature_2m_mean`, `surface_net_solar_radiation_mean`, `surface_net_thermal_radiation_mean`, `lai_GIMMS_filled`
+- **Daily targets:** `streamflow`, `fluxcom_E` (ET), `nsidc_SWE`
+- **Monthly target:** `grace_TWSA`
+
+---
 
 ## Quick Start
 
-### Dependencies
-The code in this repository was generated and executed in `python=3.10.13` by using `torch=2.4.1` (with `cuda-version=12.9`). Additional packages needed to execute the code are `numpy=2.1.3` and `pandas=2.2.3`.
+### 1. Install dependencies
 
-### Download and prepare the datasets
-```
-- Caravan: https://doi.org/10.5281/ZENODO.15529786
-- MODIS LAI: https://doi.org/10.7289/V5TT4P69
-- FLUXCOM X-BASE ET: https://doi.org/10.18160/5NZG-JMJE
-- NSIDC SWE: https://doi.org/10.5067/0GGPB220EX6A
-- GRACE TWSA: https://doi.org/10.5067/TEMSC-3MJ634
+```bash
+pip install torch numpy pandas scikit-learn tqdm
 ```
 
-All data are aggregated on the basin-scale. For more information about alternative data employed, gap-filling LAI, catchment filtering and other methodological steps, please refer to the manuscript. 
+### 2. Edit `config.py`
 
-After acquiring all the basin-scale data, in order to train the model, the data must already be stored in pickle format (see L72-L78 of `train.py`). In our study, we use 5fold temporal cross validation, but in ```train.py```, for convenience, we assume that the data is already split in the three sets (training, validation, testing). To this end, the pickled python dictionary contains three keys, with  training, validation and test **tensor datasets** (```torch.utils.data.TensorDataset```). 
+Update the data paths to match your local setup:
 
-Each of these three tensor datasets is a tuple: **TensorDataset(x, y, z)**, where:
+```python
+DATA_DIR = "/path/to/Caravan/forcing_and_target_csvs/"
+ATTR_PATHS = [
+    "/path/to/Caravan/attributes/camels/attributes_hydroatlas_camels.csv",
+    "/path/to/Caravan/attributes/camels/attributes_other_camels.csv",
+]
 ```
-1. x -> input, with shape [B, T, V] (number of basins, daily timesteps, inputs inlc. daily forcing and static attributes)
-2. y -> daily targets, with shape [B, T, V] (number of basins, daily timesteps, daily targets incl. Q, ET, SWE)
-3. z -> monthly targets, with shape [B, M, K] (number of basins, monthly timesteps, monthly targets incl. TWSA)
+
+### 3. Run training
+
+```bash
+python main.py \
+    --basin_list basin_list_us_camels.txt \
+    --config config.py \
+    --fold_id 0 \
+    --seed 42 \
+    --save_dir model_output \
+    --num_epochs 100
 ```
 
-### Run the code
+### Command-line arguments
 
-In order to train the model, all you need to do is run ```train.py```.
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--basin_list` | Yes | Path to basin list file |
+| `--config` | Yes | Path to `config.py` |
+| `--fold_id` | Yes | Cross-validation fold index (0–4) |
+| `--seed` | No | Random seed (default: `42`) |
+| `--save_dir` | No | Output directory (default: `model_output`) |
+| `--num_epochs` | No | Number of training epochs (default: `100`) |
+| `--show_progress` | No | Show per-timestep progress bar during forward pass |
 
-The provided code will execute **a single run** (1 fold, 1 seed): 
+---
 
-```python train.py```
+## Output Files
 
-The arguments already have default values, but you can always modify in-line, e.g.: 
+After training, the following files are saved under `--save_dir`:
 
-```python train.py --save_dir results_dir --data_path pickle_dir```.
+```
+model_output/
+├── best_model_seed42_fold0.pt            # Best model weights (lowest validation loss)
+└── training_progress_seed42_fold0.txt    # Per-epoch train/val loss log
+```
 
-For training across many folds/seeds, a batch script is best.
+---
+
+## Cross-Validation
+
+Time-block cross-validation (`TimeBlockCV`) splits data by year:
+
+- **Spin-up period:** 1996–2000 — used for model warm-up only, excluded from training/validation/test
+- **CV period:** 2001–2020 — split into 5 folds of ~4 years each
+- **Validation set:** one year sampled every 4 years from the non-test years (`val_stride=4, val_offset=3`)
+
+Run fold indices 0–4 separately to cover the full dataset.
+
+---
+
+## Model Architecture
+
+```
+Input: meteorological forcings (P, T, Radiation, LAI) + static attributes (land cover, terrain, soil)
+  │
+  ├── StaticParamGenerator (MLP) --> basin-specific ecohydrological parameters
+  │
+  └── HydroProcess (sequential simulation)
+        ├── Rain-snow partitioning
+        ├── Snow bucket
+        ├── Water partitioning
+        ├── Ecosystem water bucket
+        ├── Fast-flow bucket
+        ├── Slow-flow bucket
+        └── River routing (triangular MAXBAS kernel)
+
+Output (train mode): Q, ET, SWE, TWSA (monthly anomaly)
+Output (full mode):  all fluxes, states, and parameters
+```
+
+---
+
+## Caching
+
+On the first run, loading all basins can take several minutes. The processed dataset is automatically saved to a `cache/` directory. Subsequent runs with identical configuration will load directly from cache, significantly reducing startup time.
+
+To force a fresh load, delete the contents of the `cache/` directory.
