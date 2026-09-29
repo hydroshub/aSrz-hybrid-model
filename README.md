@@ -1,4 +1,4 @@
-# Spatiotemporal Dynamics of Active Root Zone Storage Revealed from Hybrid Machine Learning
+# aSrz-Diag: A hybrid ecohydrological model for diagnosing active root zone storage
 
 This repository provides a straightforward PyTorch implementation of the model proposed in the manuscript [Spatiotemporal dynamics of active root zone storage revealed from hybrid machine learning](https://doi.org/10.1029/2025WR042803).
 
